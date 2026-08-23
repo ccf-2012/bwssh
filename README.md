@@ -21,7 +21,7 @@
 
 ```bash
 # macOS / Linux 通用
-curl -o ~/.local/bin/bwssh https://your-host/bwssh   # 或手动复制脚本
+curl -o ~/.local/bin/bwssh https://raw.githubusercontent.com/ccf-2012/bwssh/main/bwssh
 chmod +x ~/.local/bin/bwssh
 
 # 确保 ~/.local/bin 在 PATH 中（加入 ~/.zshrc）
@@ -263,7 +263,7 @@ curl -L https://github.com/jqlang/jq/releases/latest/download/jq-linux-amd64 \
 ```bash
 # 1. 安装 bw + jq（见上）
 # 2. 复制脚本
-curl -o ~/.local/bin/bwssh https://your-host/bwssh
+curl -o ~/.local/bin/bwssh https://raw.githubusercontent.com/ccf-2012/bwssh/main/bwssh
 chmod +x ~/.local/bin/bwssh
 
 # 3. 首次登录
@@ -343,4 +343,6 @@ rm -f ~/.bw_session ~/.bw_serve.pid /tmp/bw_serve.log
 
 ---
 
+## 脚本源码
 
+[`bwssh`](./bwssh)
