@@ -29,13 +29,16 @@
 
 ## 安装
 
-```bash
-# macOS / Linux 通用
-curl -o ~/.local/bin/bwssh https://raw.githubusercontent.com/ccf-2012/bwssh/main/bwssh.sh
-chmod +x ~/.local/bin/bwssh
+#### 1. 下载脚本并赋予权限（一键拷贝）
 
-# 确保 ~/.local/bin 在 PATH 中（加入 ~/.zshrc 或 ~/.bashrc）
-export PATH="$HOME/.local/bin:$PATH"
+```bash
+mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/ccf-2012/bwssh/main/bwssh.sh -o ~/.local/bin/bwssh && chmod +x ~/.local/bin/bwssh
+```
+
+#### 2. 加入环境变量（自动识别 macOS `.zshrc` / Linux `.bashrc`，一键拷贝）
+
+```bash
+RC="$([ -f "$HOME/.zshrc" ] && echo "$HOME/.zshrc" || echo "$HOME/.bashrc")"; grep -q 'local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"; source "$RC"
 ```
 
 ---
