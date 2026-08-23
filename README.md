@@ -119,20 +119,6 @@ prod-db-01                   postgres     10.0.0.2               [pass]
 staging-api                  deploy       staging.myapp.com      [key]
 ```
 
-### 仅注入 Key 到 ssh-agent
-
-> [!NOTE]
-> `--add-key` 将 Bitwarden 中已存储的私钥注入本机 ssh-agent 内存，让 git、rsync、scp 等工具直接复用。
-> （仅适用于包含私钥的条目，对密码条目会给出提示）。
-
-```bash
-bwssh --add-key prod-web-01
-# 或
-bwssh -k prod-web-01
-
-# 不带参数时弹出 fzf 选择
-bwssh -k
-```
 
 ### 同步云端最新数据（密码/条目变更时刷新）
 
@@ -144,7 +130,7 @@ bwssh --sync
 bwssh -s
 ```
 
-> ⚡ **秒级无缝同步**：直接通过后台服务的 REST API 在内存中热更新最新条目，1 秒内完成同步，无需重启服务。
+> ⚡ **无缝同步**：直接通过后台服务的 REST API 在内存中热更新最新条目，无需重启服务。
 
 ### 停止本地后台服务
 
@@ -241,16 +227,9 @@ BWSSH_OPTS="-L 8080:localhost:8080" bwssh prod-web-01
 
 此工具 **不依赖 Bitwarden Desktop App**，可在任意 Linux/macOS 机器上运行。
 
-### 最小安装（仅需 2 个工具）
+### 最小安装
 
-在受限环境或临时跳板机上，只需安装 `bw` 和 `jq`，**无需 fzf**（放弃交互选择，改用直接输名字）。
-
-| 工具 | 必须 | 说明 |
-|---|---|---|
-| `bw` | ✅ | Bitwarden CLI，核心依赖 |
-| `jq` | ✅ | JSON 解析，必须 |
-| `fzf` | ❌ 可选 | 只有裸跑 `bwssh` 无参数时才需要 |
-| `curl` | ✅ 通常已有 | `bw serve` API 调用，大多数系统预装 |
+在受限环境或临时跳板机上，只需安装 `bw` 和 `jq`，**可以不装 fzf**（不交互选择，直接输入名字）。
 
 **安装 `bw`：**
 
@@ -263,29 +242,7 @@ curl -L "https://github.com/bitwarden/clients/releases/latest/download/bw-linux-
 unzip /tmp/bw.zip -d ~/.local/bin/ && chmod +x ~/.local/bin/bw
 ```
 
----
 
-## 故障排查
 
-### `SSH item not found`
 
-```bash
-# 先确认条目名称拼写或查看所有可用 SSH 条目
-bwssh --list
 
-# 确保条目放在了 SSH 文件夹下，或者含有 private key、ssh:// URI 前缀
-```
-
-### `Neither private key nor password found`
-
-条目既没有在 Notes 中填写私钥，也没有填写 Password。请在 Bitwarden 中编辑条目补充私钥或密码。
-
-### `ssh: connect to host ... port 22: Connection refused`
-
-非标准端口时，可在 Bitwarden 条目添加 Custom Field `port` 或在 URI 中指定端口（如 `ssh://10.0.0.1:2222`）。
-
----
-
-## 脚本源码
-
-[`bwssh.sh`](./bwssh.sh)
