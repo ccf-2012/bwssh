@@ -174,6 +174,21 @@ bwssh --stop
 Bitwarden 默认 session **15 分钟无操作后过期**。可在 Bitwarden 网页后台调整：
 **Settings → Security → Session timeout**
 
+### 跨终端共享与原生 `bw` 命令联动
+
+由于 Bitwarden 官方 CLI 默认不跨终端持久化 Session，`bwssh` 使用 `~/.bw_session`（权限 600）维护有效会话。
+
+为了让系统里的所有原生 `bw` 命令（`bw list`、`bw get` 等）以及新开终端**自动共享该 Session**，只需在 `~/.zshrc`（或 `~/.bashrc`）中加入：
+
+```bash
+# 自动复用 bwssh 维护的 session，无需重复输入主密码
+alias bw='BW_SESSION="$(cat ~/.bw_session 2>/dev/null)" bw'
+```
+
+配置后效果：
+- 任意终端执行 `bwssh` 解锁一次，其余所有终端的 `bwssh` 和 `bw` 命令均自动处于已解锁状态。
+- 如果在终端中通过 `export BW_SESSION=...` 手动解锁，`bwssh` 也会自动同步捕获并存入缓存。
+
 ### 手动刷新 Session
 
 ```bash

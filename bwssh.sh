@@ -60,7 +60,10 @@ bw_ensure_session() {
     if [ -n "${BW_SESSION:-}" ]; then
         local status
         status=$(bw status --session "$BW_SESSION" 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
-        [ "$status" = "unlocked" ] && return 0
+        if [ "$status" = "unlocked" ]; then
+            bw_save_session
+            return 0
+        fi
     fi
 
     if [ -f "$BW_SESSION_CACHE" ]; then
