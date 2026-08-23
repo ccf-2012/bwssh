@@ -407,20 +407,8 @@ cmd_stop() {
 # ─── Sync ─────────────────────────────────────────────────────────────────────
 cmd_sync() {
     info "Syncing vault with Bitwarden cloud..."
-    if bw_serve_running; then
-        local sync_res
-        sync_res=$(curl -sf -X POST "${BW_SERVE_URL}/sync" 2>/dev/null || true)
-        local success
-        success=$(echo "$sync_res" | jq -r '.success // false' 2>/dev/null || echo "false")
-        if [ "$success" = "true" ]; then
-            ok "Sync complete. Latest vault data is loaded."
-            return 0
-        fi
-    fi
-
-    # Fallback to CLI sync and restart serve
     bw sync --session "$BW_SESSION"
-    ok "Synced. Restarting bw serve..."
+    ok "Synced. Refreshing local server..."
     cmd_stop
     bw_start_serve
 }

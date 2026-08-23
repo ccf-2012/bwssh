@@ -223,10 +223,11 @@ rm ~/.bw_session && bwssh
 
 ## 环境变量
 
-| 变量 | 说明 | 示例 |
+| 变量 | 说明 | 默认值 / 示例 |
 |---|---|---|
 | `BW_SESSION` | 手动指定 Bitwarden session token | `export BW_SESSION=xxxxx` |
-| `BWSSH_FOLDER` | 指定 SSH 条目所在的 Bitwarden 文件夹名（默认 `SSH`） | `export BWSSH_FOLDER="SSH"` |
+| `BWSSH_FOLDER` | 指定 SSH 条目所在的 Bitwarden 文件夹名 | 默认 `SSH`，如 `export BWSSH_FOLDER="Servers"` |
+| `BW_SERVE_PORT` | `bw serve` 本地 API 监听端口（防冲突） | 默认 `8087`，如 `export BW_SERVE_PORT=18087` |
 | `BWSSH_OPTS` | 追加额外的 SSH 参数 | `export BWSSH_OPTS="-v"` |
 
 **端口转发示例：**
