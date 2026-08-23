@@ -132,6 +132,24 @@ bwssh -k prod-web-01
 bwssh -k
 ```
 
+### 同步云端最新数据（密码/条目变更时刷新）
+
+当你在 Bitwarden 网页端或 App 新增、修改了服务器密码或 Key 时，直接执行同步命令：
+
+```bash
+bwssh --sync
+# 或简写
+bwssh -s
+```
+
+> ⚡ **秒级无缝同步**：直接通过后台服务的 REST API 在内存中热更新最新条目，1 秒内完成同步，无需重启服务。
+
+### 停止本地后台服务
+
+```bash
+bwssh --stop
+```
+
 ---
 
 ## Session 管理
