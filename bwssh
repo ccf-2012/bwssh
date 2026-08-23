@@ -1,0 +1,334 @@
+#!/usr/bin/env bash
+# bwssh — SSH via Bitwarden CLI
+# Uses `bw serve` (local REST API) for fast lookups after first run.
+#
+# Usage:
+#   bwssh                  # fuzzy-pick (requires fzf)
+#   bwssh prod-web-01      # connect directly by item name
+#   bwssh --list           # list all SSH items
+#   bwssh --add-key NAME   # inject key into ssh-agent only
+#   bwssh --stop           # stop background bw serve
+#   bwssh --sync           # force vault sync + restart server
+#
+# Item schema in Bitwarden (Login type):
+#   Name     = server alias  (e.g. "prod-web-01")
+#   Username = SSH user      (e.g. "ubuntu")
+#   URI      = hostname/IP   (e.g. "10.0.0.1")
+#   Notes    = private key PEM (must contain "PRIVATE KEY")
+#   Custom field "port" = SSH port (optional, default 22)
+
+set -euo pipefail
+
+# ─── Colors ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'
+BOLD='\033[1m'; RESET='\033[0m'
+
+err()  { echo -e "${RED}[bwssh] $*${RESET}" >&2; }
+info() { echo -e "${CYAN}[bwssh] $*${RESET}" >&2; }
+ok()   { echo -e "${GREEN}[bwssh] $*${RESET}" >&2; }
+
+# ─── Config ───────────────────────────────────────────────────────────────────
+BW_SESSION_CACHE="${HOME}/.bw_session"
+BW_SERVE_PORT="${BW_SERVE_PORT:-8087}"
+BW_SERVE_HOST="127.0.0.1"
+BW_SERVE_URL="http://${BW_SERVE_HOST}:${BW_SERVE_PORT}"
+BW_SERVE_PID_FILE="${HOME}/.bw_serve.pid"
+BW_SERVE_LOG="/tmp/bw_serve.log"
+
+# ─── Session Management ───────────────────────────────────────────────────────
+bw_save_session() {
+    echo "$BW_SESSION" > "$BW_SESSION_CACHE"
+    chmod 600 "$BW_SESSION_CACHE"
+}
+
+bw_ensure_session() {
+    [ -n "${BW_SESSION:-}" ] && return 0
+
+    if [ -f "$BW_SESSION_CACHE" ]; then
+        local cached
+        cached=$(cat "$BW_SESSION_CACHE")
+        if [ -n "$cached" ]; then
+            export BW_SESSION="$cached"
+            return 0
+        fi
+    fi
+
+    bw_do_unlock
+}
+
+bw_do_unlock() {
+    local status
+    status=$(bw status 2>/dev/null \
+        | grep -o '"status":"[^"]*"' \
+        | cut -d'"' -f4 \
+        || echo "unauthenticated")
+
+    case "$status" in
+        unlocked)
+            export BW_SESSION=$(bw unlock --raw)
+            ;;
+        locked)
+            info "Vault is locked. Please unlock:"
+            export BW_SESSION=$(bw unlock --raw)
+            ;;
+        unauthenticated)
+            info "Not logged in. Please log in:"
+            bw login
+            export BW_SESSION=$(bw unlock --raw)
+            ;;
+        *)
+            err "Unknown vault status: $status"
+            exit 1
+            ;;
+    esac
+
+    bw_save_session
+    ok "Vault unlocked."
+}
+
+# ─── bw serve (fast local API) ────────────────────────────────────────────────
+bw_serve_running() {
+    curl -sf --max-time 1 "${BW_SERVE_URL}/status" >/dev/null 2>&1
+}
+
+bw_start_serve() {
+    info "Starting bw serve on port ${BW_SERVE_PORT} (one-time, ~2s)..."
+
+    # Kill stale process if any
+    if [ -f "$BW_SERVE_PID_FILE" ]; then
+        local old_pid
+        old_pid=$(cat "$BW_SERVE_PID_FILE" 2>/dev/null || true)
+        [ -n "$old_pid" ] && kill "$old_pid" 2>/dev/null || true
+        sleep 0.3
+    fi
+
+    BW_SESSION="$BW_SESSION" bw serve \
+        --hostname "$BW_SERVE_HOST" \
+        --port "$BW_SERVE_PORT" \
+        >"$BW_SERVE_LOG" 2>&1 &
+    echo $! > "$BW_SERVE_PID_FILE"
+
+    # Wait up to 5s for server to be ready
+    local i=0
+    while [ $i -lt 25 ]; do
+        sleep 0.2
+        bw_serve_running && { ok "bw serve ready."; return 0; }
+        i=$((i + 1))
+    done
+
+    err "bw serve failed to start. Check log: $BW_SERVE_LOG"
+    return 1
+}
+
+bw_ensure_serve() {
+    bw_serve_running && return 0
+    bw_start_serve
+}
+
+# HTTP GET to bw serve; auto-restart on failure (e.g. session expired)
+bw_api() {
+    local path="$1"
+    local response
+
+    response=$(curl -sf --max-time 10 "${BW_SERVE_URL}/${path}" 2>/dev/null) || true
+
+    if [ -z "$response" ]; then
+        info "bw serve unreachable, re-unlocking and restarting..."
+        rm -f "$BW_SESSION_CACHE"
+        BW_SESSION=""
+        bw_do_unlock
+        bw_start_serve
+        response=$(curl -sf --max-time 10 "${BW_SERVE_URL}/${path}" 2>/dev/null) \
+            || { err "bw serve API failed: /${path}"; exit 1; }
+    fi
+
+    # bw serve wraps response: {"success":true,"data":{...}}
+    echo "$response" | jq -r 'if .success then .data else error(.message // "API error") end'
+}
+
+# ─── Item Fetching ────────────────────────────────────────────────────────────
+# SSH items = Login type whose Notes contain "PRIVATE KEY"
+# bw serve list response: {"object":"list","data":[...items...]}
+# After bw_api unwraps outer .data, items are at .data[]
+SSH_ITEM_FILTER='select(.type == 1 and .notes != null and (.notes | test("PRIVATE KEY")))'
+
+bw_list_ssh_items() {
+    bw_api "list/object/items" | jq -r "
+        .data[] | ${SSH_ITEM_FILTER} |
+        [.name, (.login.username // \"?\"), (.login.uris[0].uri // \"?\")] | @tsv
+    "
+}
+
+bw_get_item() {
+    local name="$1"
+    local encoded="${name// /%20}"
+    bw_api "list/object/items?search=${encoded}" | jq -r --arg n "$name" "
+        [ .data[] | ${SSH_ITEM_FILTER} |
+          select(.name == \$n or (.name | ascii_downcase) == (\$n | ascii_downcase)) ] |
+        first // empty
+    "
+}
+
+# ─── SSH Connection ───────────────────────────────────────────────────────────
+do_connect() {
+    local item_name="$1"
+    local add_key_only="${2:-false}"
+
+    info "Fetching item: ${BOLD}${item_name}${RESET}"
+
+    local item_json
+    item_json=$(bw_get_item "$item_name")
+
+    if [ -z "$item_json" ] || [ "$item_json" = "null" ]; then
+        err "SSH item '${item_name}' not found."
+        err "(Items must be Login type with private key in Notes)"
+        err "Run 'bwssh --list' to see available items."
+        exit 1
+    fi
+
+    local hostname username port private_key
+    hostname=$(echo "$item_json"    | jq -r '.login.uris[0].uri // empty')
+    username=$(echo "$item_json"    | jq -r '.login.username // empty')
+    port=$(echo "$item_json" | jq -r '
+        if .fields then
+            ([ .fields[] | select(.name == "port") | .value ] | first) // "22"
+        else "22" end
+    ' 2>/dev/null || echo "22")
+    private_key=$(echo "$item_json" | jq -r '.notes // empty')
+
+    [ -z "$hostname"    ] && { err "No URI/hostname in item '${item_name}'"; exit 1; }
+    [ -z "$private_key" ] && { err "No private key (Notes) in item '${item_name}'"; exit 1; }
+
+    local tmpkey
+    tmpkey=$(mktemp)
+    chmod 600 "$tmpkey"
+    trap "rm -f '$tmpkey'" EXIT INT TERM
+    printf '%s\n' "$private_key" > "$tmpkey"
+
+    if [ "$add_key_only" = "true" ]; then
+        ssh-add "$tmpkey"
+        ok "Key added to ssh-agent: ${username}@${hostname}:${port}"
+        return 0
+    fi
+
+    local extra_args=()
+    [ -n "${BWSSH_OPTS:-}" ] && read -ra extra_args <<< "$BWSSH_OPTS"
+
+    ok "Connecting → ${BOLD}${username}@${hostname}${RESET} (port ${port})"
+    echo ""
+
+    exec ssh \
+        -i "$tmpkey" \
+        -p "$port" \
+        -o "StrictHostKeyChecking=accept-new" \
+        -o "IdentitiesOnly=yes" \
+        ${extra_args[@]+"${extra_args[@]}"} \
+        "${username}@${hostname}"
+}
+
+# ─── Interactive Picker ───────────────────────────────────────────────────────
+pick_item_interactive() {
+    if ! command -v fzf &>/dev/null; then
+        err "fzf not found. Install: brew install fzf"
+        err "Or use: bwssh <item-name>"
+        exit 1
+    fi
+
+    info "Loading SSH items..."
+    local items
+    items=$(bw_list_ssh_items)
+
+    if [ -z "$items" ]; then
+        err "No SSH items found (Login items with private key in Notes)."
+        exit 1
+    fi
+
+    local selected name
+    selected=$(echo "$items" \
+        | awk -F'\t' '{printf "%-30s %s@%s\n", $1, $2, $3}' \
+        | fzf \
+            --prompt="🔐 SSH > " \
+            --header="Select a server (Bitwarden)" \
+            --height=40% \
+            --border \
+            --reverse)
+
+    name=$(echo "$selected" | awk '{print $1}' | xargs)
+    echo "$name"
+}
+
+# ─── List Command ─────────────────────────────────────────────────────────────
+cmd_list() {
+    info "SSH items in vault:"
+    echo ""
+    printf "${BOLD}%-30s %-15s %-25s${RESET}\n" "NAME" "USER" "HOST"
+    printf '%0.s─' {1..70}; echo
+    bw_list_ssh_items | awk -F'\t' '{printf "%-30s %-15s %-25s\n", $1, $2, $3}'
+    echo ""
+}
+
+# ─── Stop Server ──────────────────────────────────────────────────────────────
+cmd_stop() {
+    if [ -f "$BW_SERVE_PID_FILE" ]; then
+        local pid
+        pid=$(cat "$BW_SERVE_PID_FILE")
+        if kill "$pid" 2>/dev/null; then
+            ok "bw serve (PID ${pid}) stopped."
+        else
+            info "bw serve was not running."
+        fi
+        rm -f "$BW_SERVE_PID_FILE"
+    else
+        info "No running bw serve found."
+    fi
+}
+
+# ─── Sync ─────────────────────────────────────────────────────────────────────
+cmd_sync() {
+    info "Syncing vault..."
+    bw sync --session "$BW_SESSION"
+    ok "Synced. Restarting bw serve..."
+    cmd_stop
+    bw_start_serve
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+main() {
+    local cmd="${1:-}"
+
+    bw_ensure_session
+    bw_ensure_serve
+
+    case "$cmd" in
+        --list|-l)
+            cmd_list
+            ;;
+        --add-key|-k)
+            shift
+            local name="${1:-}"
+            [ -z "$name" ] && name=$(pick_item_interactive)
+            do_connect "$name" true
+            ;;
+        --stop)
+            cmd_stop
+            ;;
+        --sync)
+            cmd_sync
+            ;;
+        "")
+            local name
+            name=$(pick_item_interactive)
+            [ -n "$name" ] && do_connect "$name" false
+            ;;
+        -*)
+            err "Unknown option: $cmd"
+            echo "Usage: bwssh [name | --list | --add-key [name] | --stop | --sync]"
+            exit 1
+            ;;
+        *)
+            do_connect "$cmd" false
+            ;;
+    esac
+}
+
+main "$@"
