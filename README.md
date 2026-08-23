@@ -6,9 +6,8 @@
 
 ## 特性
 
-- 🔑 **支持私钥与密码双模式**：优先私钥登录，无私钥时自动填充密码。
-- ⚡ **无额外依赖**：密码登录采用现代 OpenSSH 原生机制（`SSH_ASKPASS_REQUIRE=force`），无需安装 `expect` 或 `sshpass`。
-- 🔍 **智能条目识别**：支持按文件夹隔离（默认 `SSH` 文件夹），也支持按私钥、`ssh://` URI、自定义端口字段混合自动识别。
+- 🔑 **支持私钥与密码登录**：优先私钥登录，无私钥时自动填充密码。
+- 🔍 **条目识别**：支持按文件夹隔离（默认 `SSH` 文件夹），也支持按私钥、`ssh://` URI、自定义端口字段混合自动识别。
 - 🚀 **快速响应**：基于 `bw serve` 本地轻量缓存与后台 API。
 - 🛡️ **内存与会话安全**：凭据与临时 Key / AskPass 脚本均严格隔离，连接结束即刻自动销毁清理。
 
@@ -20,10 +19,8 @@
 |---|---|---|
 | `bw` | Bitwarden CLI | `brew install bitwarden-cli` / `npm i -g @bitwarden/cli` |
 | `jq` | JSON 解析 | `brew install jq` / `apt install jq` |
-| `fzf` | 交互式模糊选择，**仅 `bwssh`（无参数）和 `bwssh -k`（无参数）时需要** | `brew install fzf` / `apt install fzf` |
+| `fzf` | 交互式模糊选择| `brew install fzf` / `apt install fzf` |
 
-> [!TIP]
-> 如果你不需交互式模糊选择，习惯直接输名字（`bwssh prod-web-01`），可以不装 fzf。
 
 ---
 
