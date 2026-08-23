@@ -49,54 +49,41 @@ bw_save_session() {
     chmod 600 "$BW_SESSION_CACHE"
 }
 
+bw_do_unlock() {
+    info "Vault is locked or session expired. Please unlock:"
+    export BW_SESSION=$(bw unlock --raw)
+    bw_save_session
+    ok "Vault unlocked."
+}
+
 bw_ensure_session() {
-    [ -n "${BW_SESSION:-}" ] && return 0
+    if [ -n "${BW_SESSION:-}" ]; then
+        local status
+        status=$(bw status --session "$BW_SESSION" 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
+        [ "$status" = "unlocked" ] && return 0
+    fi
 
     if [ -f "$BW_SESSION_CACHE" ]; then
         local cached
         cached=$(cat "$BW_SESSION_CACHE")
         if [ -n "$cached" ]; then
             export BW_SESSION="$cached"
-            return 0
+            local status
+            status=$(bw status --session "$BW_SESSION" 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
+            [ "$status" = "unlocked" ] && return 0
         fi
     fi
 
     bw_do_unlock
 }
 
-bw_do_unlock() {
-    local status
-    status=$(bw status 2>/dev/null \
-        | grep -o '"status":"[^"]*"' \
-        | cut -d'"' -f4 \
-        || echo "unauthenticated")
-
-    case "$status" in
-        unlocked)
-            export BW_SESSION=$(bw unlock --raw)
-            ;;
-        locked)
-            info "Vault is locked. Please unlock:"
-            export BW_SESSION=$(bw unlock --raw)
-            ;;
-        unauthenticated)
-            info "Not logged in. Please log in:"
-            bw login
-            export BW_SESSION=$(bw unlock --raw)
-            ;;
-        *)
-            err "Unknown vault status: $status"
-            exit 1
-            ;;
-    esac
-
-    bw_save_session
-    ok "Vault unlocked."
-}
-
 # ─── bw serve (fast local API) ────────────────────────────────────────────────
 bw_serve_running() {
-    curl -sf --max-time 1 "${BW_SERVE_URL}/status" >/dev/null 2>&1
+    local status_json
+    status_json=$(curl -sf --max-time 1 "${BW_SERVE_URL}/status" 2>/dev/null) || return 1
+    local vault_status
+    vault_status=$(echo "$status_json" | jq -r '.data.template.status // .data.status // .data.data.status // empty' 2>/dev/null || true)
+    [ "$vault_status" = "unlocked" ]
 }
 
 bw_start_serve() {
@@ -110,7 +97,7 @@ bw_start_serve() {
         sleep 0.3
     fi
 
-    BW_SESSION="$BW_SESSION" bw serve \
+    BW_SESSION="$BW_SESSION" bw --session "$BW_SESSION" serve \
         --hostname "$BW_SERVE_HOST" \
         --port "$BW_SERVE_PORT" \
         >"$BW_SERVE_LOG" 2>&1 &
@@ -124,7 +111,7 @@ bw_start_serve() {
         i=$((i + 1))
     done
 
-    err "bw serve failed to start. Check log: $BW_SERVE_LOG"
+    err "bw serve failed to start or vault locked. Check log: $BW_SERVE_LOG"
     return 1
 }
 
@@ -133,25 +120,30 @@ bw_ensure_serve() {
     bw_start_serve
 }
 
-# HTTP GET to bw serve; auto-restart on failure (e.g. session expired)
+# HTTP GET to bw serve
 bw_api() {
     local path="$1"
     local response
 
-    response=$(curl -sf --max-time 10 "${BW_SERVE_URL}/${path}" 2>/dev/null) || true
+    response=$(curl -s --max-time 10 "${BW_SERVE_URL}/${path}" 2>/dev/null) || true
 
     if [ -z "$response" ]; then
-        info "bw serve unreachable, re-unlocking and restarting..."
-        rm -f "$BW_SESSION_CACHE"
-        BW_SESSION=""
-        bw_do_unlock
-        bw_start_serve
-        response=$(curl -sf --max-time 10 "${BW_SERVE_URL}/${path}" 2>/dev/null) \
-            || { err "bw serve API failed: /${path}"; exit 1; }
+        err "Failed to reach local bw serve (${BW_SERVE_URL})."
+        err "Try running 'bwssh --stop' to restart it."
+        exit 1
+    fi
+
+    local success
+    success=$(echo "$response" | jq -r '.success // false' 2>/dev/null || echo "false")
+    if [ "$success" != "true" ]; then
+        local msg
+        msg=$(echo "$response" | jq -r '.message // "API error"' 2>/dev/null || echo "API error")
+        err "Bitwarden API error: $msg"
+        exit 1
     fi
 
     # bw serve wraps response: {"success":true,"data":{...}}
-    echo "$response" | jq -r 'if .success then .data else error(.message // "API error") end'
+    echo "$response" | jq '.data'
 }
 
 # ─── Item Fetching ────────────────────────────────────────────────────────────
