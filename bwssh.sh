@@ -337,6 +337,7 @@ EOF
             -o "StrictHostKeyChecking=accept-new" \
             -o "PubkeyAuthentication=no" \
             -o "PreferredAuthentications=password,keyboard-interactive" \
+            -o "NumberOfPasswordPrompts=1" \
             ${extra_args[@]+"${extra_args[@]}"} \
             "${username}@${hostname}"
     fi
