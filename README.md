@@ -2,14 +2,16 @@
 
 通过 Bitwarden CLI 直接从密码库取出主机名、用户名、**SSH 私钥或密码**并完成自动登录，**无需本地 Desktop App，无需维护 `~/.ssh/config`，跨机器开箱即用**。
 
+![bwssh demo](assets/demo.png)
+
 ---
 
 ## 特性
 
 - 🔑 **支持私钥与密码双模式**：优先私钥登录，无私钥时自动填充密码。
-- ⚡ **零额外依赖**：密码登录采用现代 OpenSSH 原生机制（`SSH_ASKPASS_REQUIRE=force`），无需安装 `expect` 或 `sshpass`。
+- ⚡ **无额外依赖**：密码登录采用现代 OpenSSH 原生机制（`SSH_ASKPASS_REQUIRE=force`），无需安装 `expect` 或 `sshpass`。
 - 🔍 **智能条目识别**：支持按文件夹隔离（默认 `SSH` 文件夹），也支持按私钥、`ssh://` URI、自定义端口字段混合自动识别。
-- 🚀 **毫秒级极速响应**：基于 `bw serve` 本地轻量缓存与后台 API。
+- 🚀 **快速响应**：基于 `bw serve` 本地轻量缓存与后台 API。
 - 🛡️ **内存与会话安全**：凭据与临时 Key / AskPass 脚本均严格隔离，连接结束即刻自动销毁清理。
 
 ---
@@ -23,7 +25,7 @@
 | `fzf` | 交互式模糊选择，**仅 `bwssh`（无参数）和 `bwssh -k`（无参数）时需要** | `brew install fzf` / `apt install fzf` |
 
 > [!TIP]
-> 如果你习惯直接输名字（`bwssh prod-web-01`），可以不装 fzf。
+> 如果你不需交互式模糊选择，习惯直接输名字（`bwssh prod-web-01`），可以不装 fzf。
 
 ---
 
@@ -35,11 +37,17 @@
 mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/ccf-2012/bwssh/main/bwssh.sh -o ~/.local/bin/bwssh && chmod +x ~/.local/bin/bwssh
 ```
 
-#### 2. 加入环境变量（自动识别 macOS `.zshrc` / Linux `.bashrc`，一键拷贝）
-
-```bash
-RC="$([ -f "$HOME/.zshrc" ] && echo "$HOME/.zshrc" || echo "$HOME/.bashrc")"; grep -q 'local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"; source "$RC"
+#### 2. 加入环境变量，确保路径在 PATH 中
+- 手动添加 `~/.local/bin` 在 PATH 中（加入 ~/.zshrc 或 ~/.bashrc）
+```sh 
+export PATH="$HOME/.local/bin:$PATH"
 ```
+
+- 一键拷贝，自动识别 macOS `.zshrc` / Linux `.bashrc`
+```bash
+RC="$([ -f "$HOME/.zshrc" ] && echo "$HOME/.zshrc" || echo "$HOME/.bashrc")"; grep -qF '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"; source "$RC"
+```
+
 
 ---
 
