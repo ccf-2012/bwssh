@@ -1,8 +1,6 @@
 # bwssh — Bitwarden CLI SSH 管理工具
 
-通过 Bitwarden CLI 直接从密码库取出主机名、用户名、**SSH 私钥或密码**并完成自动登录，**无需本地 Desktop App，无需维护 `~/.ssh/config`，跨机器开箱即用**。
-
-![bwssh demo](assets/demo.png)
+通过调用 Bitwarden CLI 管理 SSH 登录，一条 `bwssh` 命令从密码库取出主机名、用户名、**SSH 私钥或密码**并完成自动登录，**无需本地 Desktop App，无需维护 `~/.ssh/config`，跨机器开箱即用**。
 
 ---
 
@@ -31,23 +29,16 @@
 
 ## 安装
 
-#### 1. 下载脚本并赋予权限（一键拷贝）
+#### 1. 下载脚本并赋予权限
 
 ```bash
 mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/ccf-2012/bwssh/main/bwssh.sh -o ~/.local/bin/bwssh && chmod +x ~/.local/bin/bwssh
 ```
 
-#### 2. 加入环境变量，确保路径在 PATH 中
-- 手动添加 `~/.local/bin` 在 PATH 中（加入 ~/.zshrc 或 ~/.bashrc）
+#### 2. 加入环境变量，确保路径在 PATH 中（加入 ~/.zshrc 或 ~/.bashrc）
 ```sh 
 export PATH="$HOME/.local/bin:$PATH"
 ```
-
-- 一键拷贝，自动识别 macOS `.zshrc` / Linux `.bashrc`
-```bash
-RC="$([ -f "$HOME/.zshrc" ] && echo "$HOME/.zshrc" || echo "$HOME/.bashrc")"; grep -qF '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"; source "$RC"
-```
-
 
 ---
 
