@@ -185,7 +185,7 @@ bw_list_ssh_items() {
         [
             .name,
             (.login.username // \"?\"),
-            ((.login.uris[0].uri // \"?\") | sub(\"^[sS][sS][hH]://\"; \"\") | split(\"/\")[0] | split(\":\")[0] | split(\"@\")[-1]),
+            ((.login.uris[0].uri // \"?\") | sub(\"^[sS][sS][hH]://\"; \"\") | split(\"/\")[0] | split(\"@\")[-1] | if test(\"^\x5c\x5c[[^\x5c\x5c]]+\x5c\x5c](:[0-9]+)?$\") then capture(\"^\x5c\x5c[(?<h>[^\x5c\x5c]]+)\x5c\x5c]\") | .h elif (contains(\":\") and (split(\":\") | length == 2)) then split(\":\")[0] else . end),
             (if (.notes != null and (.notes | test(\"PRIVATE KEY\"))) then \"key\" elif (.login.password != null and .login.password != \"\") then \"pass\" else \"none\" end)
         ] | @tsv
     "
@@ -249,14 +249,18 @@ do_connect() {
         [ -z "$username" ] && username="$uri_user"
     fi
 
-    # Extract port if not set and present in URI (host:port)
-    if [[ "$cleaned" == *":"* ]]; then
-        local uri_port="${cleaned##*:}"
-        cleaned="${cleaned%%:*}"
-        [ -z "$port" ] && port="$uri_port"
+    # Extract host and port (support IPv6, bracketed IPv6 with port, and host:port)
+    if [[ "$cleaned" =~ ^\[([a-fA-F0-9:]+)\]:([0-9]+)$ ]]; then
+        hostname="${BASH_REMATCH[1]}"
+        [ -z "$port" ] && port="${BASH_REMATCH[2]}"
+    elif [[ "$cleaned" =~ ^\[([a-fA-F0-9:]+)\]$ ]]; then
+        hostname="${BASH_REMATCH[1]}"
+    elif [[ "$cleaned" =~ ^([^:]+):([0-9]+)$ ]]; then
+        hostname="${BASH_REMATCH[1]}"
+        [ -z "$port" ] && port="${BASH_REMATCH[2]}"
+    else
+        hostname="$cleaned"
     fi
-
-    hostname="$cleaned"
     [ -z "$hostname" ] && { err "No URI/hostname in item '${item_name}'"; exit 1; }
     [ -z "$port"     ] && port="22"
     [ -z "$username" ] && username="${USER:-root}"
