@@ -174,6 +174,16 @@ SSH_ITEM_JQ_FILTER='
       ([.login.uris[]?.uri // ""] | any(test("^ssh://"; "i"))) or
       ([.fields[]?.name // ""] | any(. == "port" or . == "ssh"))
     );
+
+  def clean_host:
+    sub("^[sS][sS][hH]://"; "") | split("/")[0] | split("@")[-1] |
+    if test("^\\[[^\\]]+\\](:[0-9]+)?$") then
+      capture("^\\[(?<h>[^\\]]+)\\]") | .h
+    elif (contains(":") and (split(":") | length == 2)) then
+      split(":")[0]
+    else
+      .
+    end;
 '
 
 bw_list_ssh_items() {
@@ -185,7 +195,7 @@ bw_list_ssh_items() {
         [
             .name,
             (.login.username // \"?\"),
-            ((.login.uris[0].uri // \"?\") | sub(\"^[sS][sS][hH]://\"; \"\") | split(\"/\")[0] | split(\"@\")[-1] | if test(\"^\x5c\x5c[[^\x5c\x5c]]+\x5c\x5c](:[0-9]+)?$\") then capture(\"^\x5c\x5c[(?<h>[^\x5c\x5c]]+)\x5c\x5c]\") | .h elif (contains(\":\") and (split(\":\") | length == 2)) then split(\":\")[0] else . end),
+            ((.login.uris[0].uri // \"?\") | clean_host),
             (if (.notes != null and (.notes | test(\"PRIVATE KEY\"))) then \"key\" elif (.login.password != null and .login.password != \"\") then \"pass\" else \"none\" end)
         ] | @tsv
     "
