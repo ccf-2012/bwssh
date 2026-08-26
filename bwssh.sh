@@ -155,7 +155,7 @@ bw_get_folder_id() {
     local folder_name="$1"
     [ -z "$folder_name" ] && return 0
     local folders
-    folders=$(bw_api "list/object/folders" 2>/dev/null || true)
+    folders=$(bw_api "list/object/folders") || return 1
     if [ -n "$folders" ] && [ "$folders" != "null" ]; then
         echo "$folders" | jq -r --arg f "$folder_name" '
             [ .data[] | select(.name == $f or (.name | ascii_downcase) == ($f | ascii_downcase)) ] |
@@ -189,7 +189,7 @@ SSH_ITEM_JQ_FILTER='
 
 bw_list_ssh_items() {
     local folder_id
-    folder_id=$(bw_get_folder_id "$BWSSH_FOLDER")
+    folder_id=$(bw_get_folder_id "$BWSSH_FOLDER") || return 1
     bw_api "list/object/items" | jq -r --arg fid "$folder_id" "
         ${SSH_ITEM_JQ_FILTER}
         .data[] | select(is_ssh_item(\$fid)) |
@@ -206,7 +206,7 @@ bw_get_item() {
     local name="$1"
     local encoded="${name// /%20}"
     local folder_id
-    folder_id=$(bw_get_folder_id "$BWSSH_FOLDER")
+    folder_id=$(bw_get_folder_id "$BWSSH_FOLDER") || return 1
     bw_api "list/object/items?search=${encoded}" | jq -r --arg n "$name" --arg fid "$folder_id" "
         ${SSH_ITEM_JQ_FILTER}
         [ .data[] | select(is_ssh_item(\$fid)) |
@@ -225,7 +225,9 @@ do_connect() {
     info "Fetching item: ${BOLD}${item_name}${RESET}"
 
     local item_json
-    item_json=$(bw_get_item "$item_name")
+    if ! item_json=$(bw_get_item "$item_name"); then
+        exit 1
+    fi
 
     if [ -z "$item_json" ] || [ "$item_json" = "null" ]; then
         err "SSH item '${item_name}' not found."
@@ -375,7 +377,9 @@ pick_item_interactive() {
 
     info "Loading SSH items..."
     local items
-    items=$(bw_list_ssh_items)
+    if ! items=$(bw_list_ssh_items); then
+        exit 1
+    fi
 
     if [ -z "$items" ]; then
         err "No SSH items found in vault."
@@ -401,9 +405,19 @@ pick_item_interactive() {
 cmd_list() {
     info "SSH items in vault (folder: ${BWSSH_FOLDER}):"
     echo ""
+    local items
+    if ! items=$(bw_list_ssh_items); then
+        exit 1
+    fi
+
+    if [ -z "$items" ]; then
+        info "No SSH items found in vault."
+        return 0
+    fi
+
     printf "${BOLD}%-28s %-12s %-22s %-6s${RESET}\n" "NAME" "USER" "HOST" "AUTH"
     printf '%0.s─' {1..72}; echo
-    bw_list_ssh_items | awk -F'\t' '{printf "%-28s %-12s %-22s [%s]\n", $1, $2, $3, $4}'
+    echo "$items" | awk -F'\t' '{printf "%-28s %-12s %-22s [%s]\n", $1, $2, $3, $4}'
     echo ""
 }
 
@@ -411,8 +425,8 @@ cmd_list() {
 cmd_stop() {
     if [ -f "$BW_SERVE_PID_FILE" ]; then
         local pid
-        pid=$(cat "$BW_SERVE_PID_FILE")
-        if kill "$pid" 2>/dev/null; then
+        pid=$(cat "$BW_SERVE_PID_FILE" 2>/dev/null || true)
+        if [ -n "$pid" ] && kill "$pid" 2>/dev/null; then
             ok "bw serve (PID ${pid}) stopped."
         else
             info "bw serve was not running."
@@ -436,7 +450,28 @@ cmd_sync() {
 main() {
     local cmd="${1:-}"
 
+    # Handle standalone commands that don't need active session/server
+    case "$cmd" in
+        --stop)
+            cmd_stop
+            return 0
+            ;;
+        --help|-h)
+            echo "Usage: bwssh [name [command...]] | --list | --add-key [name] | --stop | --sync"
+            return 0
+            ;;
+    esac
+
     bw_ensure_session
+
+    # Handle sync before starting serve
+    case "$cmd" in
+        --sync|-s)
+            cmd_sync
+            return 0
+            ;;
+    esac
+
     bw_ensure_serve
 
     case "$cmd" in
@@ -447,13 +482,7 @@ main() {
             shift
             local name="${1:-}"
             [ -z "$name" ] && name=$(pick_item_interactive)
-            do_connect "$name" true
-            ;;
-        --stop)
-            cmd_stop
-            ;;
-        --sync|-s)
-            cmd_sync
+            [ -n "$name" ] && do_connect "$name" true
             ;;
         "")
             local name
