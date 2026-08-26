@@ -5,6 +5,7 @@
 # Usage:
 #   bwssh                  # fuzzy-pick (requires fzf)
 #   bwssh prod-web-01      # connect directly by item name
+#   bwssh prod-web-01 "cmd"# run remote command directly
 #   bwssh --list           # list all SSH items
 #   bwssh --add-key NAME   # inject key into ssh-agent only
 #   bwssh --stop           # stop background bw serve
@@ -218,6 +219,8 @@ bw_get_item() {
 do_connect() {
     local item_name="$1"
     local add_key_only="${2:-false}"
+    shift 2 2>/dev/null || shift $#
+    local remote_cmd=("$@")
 
     info "Fetching item: ${BOLD}${item_name}${RESET}"
 
@@ -324,7 +327,8 @@ do_connect() {
             -o "StrictHostKeyChecking=accept-new" \
             -o "IdentitiesOnly=yes" \
             ${extra_args[@]+"${extra_args[@]}"} \
-            "${username}@${hostname}"
+            "${username}@${hostname}" \
+            ${remote_cmd[@]+"${remote_cmd[@]}"}
     else
         # Password authentication using native SSH_ASKPASS
         local askpass_dir
@@ -356,7 +360,8 @@ EOF
             -o "PreferredAuthentications=password,keyboard-interactive" \
             -o "NumberOfPasswordPrompts=1" \
             ${extra_args[@]+"${extra_args[@]}"} \
-            "${username}@${hostname}"
+            "${username}@${hostname}" \
+            ${remote_cmd[@]+"${remote_cmd[@]}"}
     fi
 }
 
@@ -457,11 +462,12 @@ main() {
             ;;
         -*)
             err "Unknown option: $cmd"
-            echo "Usage: bwssh [name | --list | --add-key [name] | --stop | --sync]"
+            echo "Usage: bwssh [name [command...]] | --list | --add-key [name] | --stop | --sync"
             exit 1
             ;;
         *)
-            do_connect "$cmd" false
+            shift
+            do_connect "$cmd" false "$@"
             ;;
     esac
 }
