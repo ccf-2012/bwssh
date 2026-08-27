@@ -98,9 +98,20 @@ bw_start_serve() {
         local old_pid
         old_pid=$(cat "$BW_SERVE_PID_FILE" 2>/dev/null || true)
         [ -n "$old_pid" ] && kill "$old_pid" 2>/dev/null || true
+        rm -f "$BW_SERVE_PID_FILE"
         sleep 0.3
     fi
 
+    # Kill any orphaned process listening on the port
+    local port_pids
+    port_pids=$(lsof -ti ":${BW_SERVE_PORT}" 2>/dev/null || true)
+    if [ -n "$port_pids" ]; then
+        kill $port_pids 2>/dev/null || true
+        sleep 0.2
+    fi
+
+    # Use --unhandled-rejections=warn so network/DNS errors do not crash bw serve
+    NODE_OPTIONS="${NODE_OPTIONS:-} --unhandled-rejections=warn" \
     BW_SESSION="$BW_SESSION" bw --session "$BW_SESSION" serve \
         --hostname "$BW_SERVE_HOST" \
         --port "$BW_SERVE_PORT" \
@@ -130,6 +141,16 @@ bw_api() {
     local response
 
     response=$(curl -s --max-time 10 "${BW_SERVE_URL}/${path}" 2>/dev/null) || true
+
+    if [ -z "$response" ]; then
+        # Try to restart once if server died unexpectedly
+        if ! bw_serve_running; then
+            info "bw serve connection lost, attempting restart..."
+            if bw_start_serve; then
+                response=$(curl -s --max-time 10 "${BW_SERVE_URL}/${path}" 2>/dev/null) || true
+            fi
+        fi
+    fi
 
     if [ -z "$response" ]; then
         err "Failed to reach local bw serve (${BW_SERVE_URL})."
@@ -423,17 +444,27 @@ cmd_list() {
 
 # ─── Stop Server ──────────────────────────────────────────────────────────────
 cmd_stop() {
+    local stopped=false
     if [ -f "$BW_SERVE_PID_FILE" ]; then
         local pid
         pid=$(cat "$BW_SERVE_PID_FILE" 2>/dev/null || true)
         if [ -n "$pid" ] && kill "$pid" 2>/dev/null; then
+            stopped=true
             ok "bw serve (PID ${pid}) stopped."
-        else
-            info "bw serve was not running."
         fi
         rm -f "$BW_SERVE_PID_FILE"
-    else
-        info "No running bw serve found."
+    fi
+
+    local port_pids
+    port_pids=$(lsof -ti ":${BW_SERVE_PORT}" 2>/dev/null || true)
+    if [ -n "$port_pids" ]; then
+        kill $port_pids 2>/dev/null || true
+        stopped=true
+        ok "Killed process on port ${BW_SERVE_PORT}."
+    fi
+
+    if [ "$stopped" = "false" ]; then
+        info "bw serve was not running."
     fi
 }
 
