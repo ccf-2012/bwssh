@@ -35,6 +35,13 @@ err()  { echo -e "${RED}[bwssh] $*${RESET}" >&2; }
 info() { echo -e "${CYAN}[bwssh] $*${RESET}" >&2; }
 ok()   { echo -e "${GREEN}[bwssh] $*${RESET}" >&2; }
 
+trim() {
+    local s="${1:-}"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
+
 # ─── Config ───────────────────────────────────────────────────────────────────
 BW_SESSION_CACHE="${HOME}/.bw_session"
 BW_SERVE_PORT="${BW_SERVE_PORT:-8087}"
@@ -198,14 +205,17 @@ SSH_ITEM_JQ_FILTER='
     );
 
   def clean_host:
-    sub("^[sS][sS][hH]://"; "") | split("/")[0] | split("@")[-1] |
+    sub("^\\s+"; "") | sub("\\s+$"; "") |
+    sub("^[sS][sS][hH]://\\s*"; "") | split("/")[0] | split("@")[-1] |
+    sub("^\\s+"; "") | sub("\\s+$"; "") |
     if test("^\\[[^\\]]+\\](:[0-9]+)?$") then
       capture("^\\[(?<h>[^\\]]+)\\]") | .h
     elif (contains(":") and (split(":") | length == 2)) then
       split(":")[0]
     else
       .
-    end;
+    end |
+    sub("^\\s+"; "") | sub("\\s+$"; "");
 '
 
 bw_list_ssh_items() {
@@ -243,6 +253,7 @@ do_connect() {
     shift 2 2>/dev/null || shift $#
     local remote_cmd=("$@")
 
+    item_name=$(trim "$item_name")
     info "Fetching item: ${BOLD}${item_name}${RESET}"
 
     local item_json
@@ -268,21 +279,31 @@ do_connect() {
     private_key=$(echo "$item_json"  | jq -r '.notes // empty')
     password=$(echo "$item_json"     | jq -r '.login.password // empty')
 
+    # Trim raw fields
+    raw_uri=$(trim "$raw_uri")
+    raw_username=$(trim "$raw_username")
+    raw_port=$(trim "$raw_port")
+
     # Parse hostname, username, and port from raw_uri and fields
     local hostname=""
     local username="$raw_username"
     local port="$raw_port"
 
     # Strip ssh:// prefix if present
-    local cleaned="${raw_uri#ssh://}"
+    local cleaned="$raw_uri"
+    cleaned="${cleaned#ssh://}"
     cleaned="${cleaned#SSH://}"
+    cleaned="${cleaned#ssh://}"
+    cleaned=$(trim "$cleaned")
     cleaned="${cleaned%%/*}"
+    cleaned=$(trim "$cleaned")
 
     # Extract username if not set and present in URI (user@host)
     if [[ "$cleaned" == *"@"* ]]; then
         local uri_user="${cleaned%%@*}"
         cleaned="${cleaned#*@}"
-        [ -z "$username" ] && username="$uri_user"
+        cleaned=$(trim "$cleaned")
+        [ -z "$username" ] && username="$(trim "$uri_user")"
     fi
 
     # Extract host and port (support IPv6, bracketed IPv6 with port, and host:port)
@@ -297,6 +318,11 @@ do_connect() {
     else
         hostname="$cleaned"
     fi
+
+    hostname=$(trim "$hostname")
+    port=$(trim "$port")
+    username=$(trim "$username")
+
     [ -z "$hostname" ] && { err "No URI/hostname in item '${item_name}'"; exit 1; }
     [ -z "$port"     ] && port="22"
     [ -z "$username" ] && username="${USER:-root}"

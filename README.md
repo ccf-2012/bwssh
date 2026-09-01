@@ -1,5 +1,13 @@
 # bwssh — Bitwarden CLI SSH 管理工具
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Shell: Bash](https://img.shields.io/badge/Shell-Bash-4EAA25.svg)](https://www.gnu.org/software/bash/)
+[![Bitwarden](https://img.shields.io/badge/Bitwarden-CLI-175DDC.svg)](https://bitwarden.com)
+
+**中文** | [**English**](README_en.md)
+
+---
+
 通过调用 Bitwarden CLI 管理 SSH 登录，一条 `bwssh` 命令从密码库取出主机名、用户名、**SSH 私钥或密码**并完成自动登录，**无需本地 Desktop App，无需维护 `~/.ssh/config`，跨机器开箱即用**。
 
 ---
@@ -82,6 +90,20 @@ bwssh prod-web-01
 ```
 
 脚本会自动从 Bitwarden 取出该条目的 Host、Username、私钥/密码，建立连接。
+
+### 直接执行远程命令
+
+```bash
+bwssh prod-web-01 "uptime && uname -a"
+```
+
+### 仅将私钥注入到 ssh-agent（不直接连接）
+
+```bash
+bwssh --add-key prod-web-01
+# 或简写
+bwssh -k prod-web-01
+```
 
 ### 交互式选择（需要 fzf）
 
