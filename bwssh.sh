@@ -17,13 +17,14 @@
 #   Password = SSH password  (optional, used for password authentication)
 #   URI      = hostname/IP   (e.g. "10.0.0.1" or "ssh://10.0.0.1:2222")
 #   Notes    = private key PEM (optional, contains "PRIVATE KEY")
+#   Custom field "key" / "private_key" / "ssh_key" = private key PEM (Hidden or Text)
 #   Custom field "port" = SSH port (optional, default 22)
 #
 # Identification criteria (any of the following):
 #   1. Belongs to the Bitwarden folder specified by $BWSSH_FOLDER (default: "SSH")
-#   2. Notes field contains "PRIVATE KEY"
-#   3. URI starts with "ssh://"
-#   4. Contains custom field "port" or "ssh"
+#   2. Notes or custom field contains "PRIVATE KEY"
+#   3. Contains custom field "key", "private_key", "ssh_key", "id_rsa", "port", or "ssh"
+#   4. URI starts with "ssh://"
 
 set -euo pipefail
 
@@ -194,14 +195,23 @@ bw_get_folder_id() {
 
 # SSH items filter definition in jq:
 # 1. Login type (.type == 1)
-# 2. Match folder OR Notes has "PRIVATE KEY" OR URI starts with "ssh://" OR custom fields has "port"/"ssh"
+# 2. Match folder OR Notes/field has "PRIVATE KEY" OR custom key/port/ssh field OR URI starts with "ssh://"
 SSH_ITEM_JQ_FILTER='
+  def has_key_field:
+    if .fields then
+      ([ .fields[] | select(
+        ((.name // "") | ascii_downcase | test("^(key|private_?key|ssh_?key|id_rsa)$")) or
+        ((.value // "") | test("PRIVATE KEY"))
+      ) ] | length > 0)
+    else false end;
+
   def is_ssh_item($fid):
     .type == 1 and (
       ($fid != "" and $fid != null and .folderId == $fid) or
       (.notes != null and (.notes | test("PRIVATE KEY"))) or
+      has_key_field or
       ([.login.uris[]?.uri // ""] | any(test("^ssh://"; "i"))) or
-      ([.fields[]?.name // ""] | any(. == "port" or . == "ssh"))
+      ([.fields[]?.name // ""] | any(. as $n | ["port", "ssh", "key", "private_key", "ssh_key"] | any(. == ($n | ascii_downcase))))
     );
 
   def clean_host:
@@ -228,7 +238,7 @@ bw_list_ssh_items() {
             .name,
             (.login.username // \"?\"),
             ((.login.uris[0].uri // \"?\") | clean_host),
-            (if (.notes != null and (.notes | test(\"PRIVATE KEY\"))) then \"key\" elif (.login.password != null and .login.password != \"\") then \"pass\" else \"none\" end)
+            (if ((.notes != null and (.notes | test(\"PRIVATE KEY\"))) or has_key_field) then \"key\" elif (.login.password != null and .login.password != \"\") then \"pass\" else \"none\" end)
         ] | @tsv
     "
 }
@@ -263,7 +273,7 @@ do_connect() {
 
     if [ -z "$item_json" ] || [ "$item_json" = "null" ]; then
         err "SSH item '${item_name}' not found."
-        err "(Items must be in '${BWSSH_FOLDER}' folder, or have private key in Notes, or ssh:// URI)"
+        err "(Items must be in '${BWSSH_FOLDER}' folder, or have private key in custom field / Notes, or ssh:// URI)"
         err "Run 'bwssh --list' to see available items."
         exit 1
     fi
@@ -273,10 +283,17 @@ do_connect() {
     raw_username=$(echo "$item_json" | jq -r '.login.username // empty')
     raw_port=$(echo "$item_json"     | jq -r '
         if .fields then
-            ([ .fields[] | select(.name == "port") | .value ] | first) // empty
+            ([ .fields[] | select((.name | ascii_downcase) == "port") | .value ] | first) // empty
         else empty end
     ' 2>/dev/null || true)
-    private_key=$(echo "$item_json"  | jq -r '.notes // empty')
+    # Check custom fields for private key first (Hidden or Text), then fallback to Notes
+    private_key=$(echo "$item_json"  | jq -r '
+        if .fields then
+            ([ .fields[] | select((.name | ascii_downcase | test("^(key|private_?key|ssh_?key|id_rsa)$")) or (.value != null and (.value | test("PRIVATE KEY")))) | .value ] | first) // .notes // empty
+        else
+            .notes // empty
+        end
+    ' 2>/dev/null || true)
     password=$(echo "$item_json"     | jq -r '.login.password // empty')
 
     # Trim raw fields
@@ -430,7 +447,7 @@ pick_item_interactive() {
 
     if [ -z "$items" ]; then
         err "No SSH items found in vault."
-        err "(Items must be in '${BWSSH_FOLDER}' folder, or have private key in Notes, or ssh:// URI)"
+        err "(Items must be in '${BWSSH_FOLDER}' folder, or have private key in custom field / Notes, or ssh:// URI)"
         exit 1
     fi
 

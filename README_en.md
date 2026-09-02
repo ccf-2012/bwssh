@@ -69,12 +69,15 @@ Create a **Login** item in your Bitwarden vault using the following schema:
 | **Username** | SSH login user | `ubuntu` or `root` |
 | **Password** | SSH login password *(optional)* | Used for password authentication if no private key is present |
 | **URI** | Host IP, domain, or SSH URI | `10.0.0.1`, `myserver.com`, or `ssh://10.0.0.1:2222` |
-| **Notes** | Full SSH private key in PEM format *(optional)* | `-----BEGIN OPENSSH PRIVATE KEY-----` … |
+| **Notes** or Hidden Field `key` | Full SSH private key in PEM format *(optional)* | `-----BEGIN OPENSSH PRIVATE KEY-----` … |
 | Custom Field `port` | SSH port number *(optional)* | `2222` (useful when non-standard port isn't specified in URI) |
 
 > [!TIP]
-> - **Private Key Auth**: Paste the complete private key into the **Notes** field.
-> - **Password Auth**: Enter the password in the **Password** field and leave **Notes** blank.
+> - **Private Key Auth (Two methods supported)**:
+>   - **Method A (Recommended for privacy)**: Add a **Hidden** custom field under Custom Fields / Additional Options named `key` or `private_key` (masked with dots in the UI).
+>   - **Method B (Quick & direct)**: Paste the complete private key directly into the **Notes** field.
+>   - *The script checks custom fields first, falling back to Notes if not set.*
+> - **Password Auth**: Enter the password in the **Password** field and leave the private key / Notes blank.
 > - **URI Formats**: Supports standard IP/domain (`10.0.0.1`), port-attached (`10.0.0.1:2222`), bracketed IPv6 (`[2001:db8::1]:2222`), or protocol URIs (`ssh://user@10.0.0.1:2222`).
 > - **Custom User in URI**: If the URI includes a username (`ssh://deploy@10.0.0.1`), it overrides or supplies the default username.
 
@@ -82,9 +85,9 @@ Create a **Login** item in your Bitwarden vault using the following schema:
 
 When listing, searching, or picking items, `bwssh` identifies an entry as an SSH host if **any** of the following conditions are met:
 1. Belongs to the `BWSSH_FOLDER` folder (default: `SSH`).
-2. **OR** the **Notes** field contains `PRIVATE KEY`.
-3. **OR** any **URI** begins with `ssh://`.
-4. **OR** contains a custom field named `port` or `ssh`.
+2. **OR** the **Notes** or **custom field** contains `PRIVATE KEY`.
+3. **OR** contains a custom field named `key`, `private_key`, `ssh_key`, `port`, or `ssh`.
+4. **OR** any **URI** begins with `ssh://`.
 
 To customize the default folder name, set:
 ```bash

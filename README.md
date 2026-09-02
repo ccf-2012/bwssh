@@ -58,21 +58,24 @@ export PATH="$HOME/.local/bin:$PATH"
 | **Username** | SSH 登录用户名 | `ubuntu` / `root` |
 | **Password** | SSH 登录密码（可选） | 密码认证时填写；若有私钥则优先使用私钥 |
 | **URI** | 主机 IP 或域名 | `10.0.0.1` / `myserver.com` / `ssh://10.0.0.1:2222` |
-| **Notes** | SSH 私钥全文（PEM 格式，可选） | `-----BEGIN OPENSSH PRIVATE KEY-----` … |
-| Custom Field `port` | SSH 端口（可选） | `2222`（非 22 且 URI 中未带端口时填写） |
+| **Notes** 或 隐藏字段 `key` | SSH 私钥全文（PEM 格式，可选） | `-----BEGIN OPENSSH PRIVATE KEY-----` … |
+| 自定义字段 `port` | SSH 端口（可选） | `2222`（非 22 且 URI 中未带端口时填写） |
 
 > [!TIP]
-> - **私钥登录**：直接将私钥全文粘贴到 **Notes** 字段。
-> - **密码登录**：填写 **Password** 字段，Notes 留空即可。
+> - **私钥存储（两种方式皆可）**：
+>   - **方式 A（防窥推荐）**：在「附加选项」中添加**隐藏型（Hidden）**自定义字段，名称设为 `key` 或 `private_key`，UI 会打码掩码显示。
+>   - **方式 B（极简直接）**：直接将私钥全文粘贴到 **Notes** 字段。
+>   - *脚本会优先读取自定义字段中的私钥，若未配置则自动回退读取 Notes。*
+> - **密码登录**：填写 **Password** 字段，私钥字段/Notes 留空即可。
 > - **URI 格式**：支持标准 IP/域名（`10.0.0.1`）或协议 URI（`ssh://user@10.0.0.1:2222`），脚本会自动提取并解析。
 
 ### SSH 条目识别规则
 
 `bwssh` 在执行 `--list`、交互选择或搜索时，会按以下特征自动匹配 SSH 条目：
 1. 条目属于 `BWSSH_FOLDER` 文件夹（默认为 `SSH` 文件夹）；
-2. **或** 条目的 **Notes** 包含 `PRIVATE KEY`；
-3. **或** 条目的 **URI** 以 `ssh://` 开头；
-4. **或** 条目包含名为 `port` 或 `ssh` 的自定义字段。
+2. **或** 条目的 **Notes** 或 **自定义字段** 包含 `PRIVATE KEY`；
+3. **或** 条目包含名为 `key`、`private_key`、`ssh_key`、`port` 或 `ssh` 的自定义字段；
+4. **或** 条目的 **URI** 以 `ssh://` 开头。
 
 > 如需更换默认文件夹名称，可在 shell 配置文件中设置：
 > ```bash
