@@ -7,23 +7,24 @@
 [**中文文档 (Chinese)**](README.md) | **English**
 
 ---
+with bwssh you can just type bwssh lax9929 to reach and login to your host. all the credential saved in your self-hosted vaultwarden, no ~/.ssh/lax9929.key, no ~/.ssh/config.
 
-Manage SSH connections effortlessly with your Bitwarden vault. With a single `bwssh` command, retrieve the host, username, **SSH private key or password**, and connect automatically.
+if you have too many hosts and forget the host name, just type bwssh and a fzf menu pop up, u can navigate and press enter to connect. everything stay in terminal.
 
-**No Bitwarden Desktop App required. No cluttering `~/.ssh/config`. Works out of the box across any machine or jump host.**
+you can also bwssh lax9929 "uptime" to excute some command.
 
 ---
 
 ## Features
 
-- 🔑 **Private Key & Password Support**: Prioritizes SSH private keys stored in vault notes; falls back to password authentication automatically via native `SSH_ASKPASS`.
-- 🔍 **Smart Item Detection**: Supports folder isolation (default `SSH` folder) as well as automatic recognition by private key content, `ssh://` URI scheme, or custom `port`/`ssh` fields.
-- ⚡ **Lightning Fast**: Powered by a background `bw serve` local REST cache, avoiding sluggish vault decryptions on repeated runs.
-- 🛡️ **Zero Disk Footprint & Strict Security**: Ephemeral private keys (`mktemp` mode 0600) and askpass scripts (mode 0700) are used strictly in-memory / temporary storage and immediately shredded upon connection exit (`trap ... EXIT INT TERM`).
-- 🔄 **Cross-Terminal Session Sharing**: Session token cached in `~/.bw_session` (mode 0600); unlock once and use across all open terminal windows.
-- 🎯 **Interactive Fuzzy Search**: Interactive selection powered by `fzf` when no server name is provided.
-- 🛠️ **SSH-Agent Key Loading**: Supports injecting keys directly into `ssh-agent` with `--add-key`.
-- 💻 **Direct Command Execution**: Run remote commands seamlessly, e.g., `bwssh my-server "uptime"`.
+- **Private Key & Password Support**: Prioritizes SSH private keys stored in vault notes; falls back to password authentication automatically via native `SSH_ASKPASS`.
+- **Smart Item Detection**: Supports folder isolation (default `SSH` folder) as well as automatic recognition by private key content, `ssh://` URI scheme, or custom `port`/`ssh` fields.
+- **Lightning Fast**: Powered by a background `bw serve` local REST cache, avoiding sluggish vault decryptions on repeated runs.
+- **Zero Disk Footprint & Strict Security**: Ephemeral private keys (`mktemp` mode 0600) and askpass scripts (mode 0700) are used strictly in-memory / temporary storage and immediately shredded upon connection exit (`trap ... EXIT INT TERM`).
+- **Cross-Terminal Session Sharing**: Session token cached in `~/.bw_session` (mode 0600); unlock once and use across all open terminal windows.
+- **Interactive Fuzzy Search**: Interactive selection powered by `fzf` when no server name is provided.
+- **SSH-Agent Key Loading**: Supports injecting keys directly into `ssh-agent` with `--add-key`.
+- **Direct Command Execution**: Run remote commands seamlessly, e.g., `bwssh my-server "uptime"`.
 
 ---
 
