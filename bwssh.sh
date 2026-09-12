@@ -52,20 +52,47 @@ BW_SERVE_PID_FILE="${HOME}/.bw_serve.pid"
 BW_SERVE_LOG="/tmp/bw_serve.log"
 BWSSH_FOLDER="${BWSSH_FOLDER:-SSH}"
 
+bw_check_dependencies() {
+    local missing=()
+    command -v bw &>/dev/null || missing+=("bw (Bitwarden CLI: brew install bitwarden-cli)")
+    command -v jq &>/dev/null || missing+=("jq (JSON processor: brew install jq)")
+    if [ ${#missing[@]} -gt 0 ]; then
+        err "Missing required dependencies:"
+        for dep in "${missing[@]}"; do
+            err "  - $dep"
+        done
+        exit 1
+    fi
+}
+
 # ─── Session Management ───────────────────────────────────────────────────────
 bw_save_session() {
+    [ -z "${BW_SESSION:-}" ] && return 0
     echo "$BW_SESSION" > "$BW_SESSION_CACHE"
     chmod 600 "$BW_SESSION_CACHE"
 }
 
 bw_do_unlock() {
     info "Vault is locked or session expired. Please unlock:"
-    export BW_SESSION=$(bw unlock --raw)
+    local session
+    if ! session=$(bw unlock --raw); then
+        err "Failed to unlock vault."
+        rm -f "$BW_SESSION_CACHE"
+        exit 1
+    fi
+    session=$(trim "$session")
+    if [ -z "$session" ]; then
+        err "Failed to obtain Bitwarden session key."
+        rm -f "$BW_SESSION_CACHE"
+        exit 1
+    fi
+    export BW_SESSION="$session"
     bw_save_session
     ok "Vault unlocked."
 }
 
 bw_ensure_session() {
+    # 1. Check existing BW_SESSION environment variable
     if [ -n "${BW_SESSION:-}" ]; then
         local status
         status=$(bw status --session "$BW_SESSION" 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
@@ -75,14 +102,49 @@ bw_ensure_session() {
         fi
     fi
 
+    # 2. Check cached session file
     if [ -f "$BW_SESSION_CACHE" ]; then
         local cached
-        cached=$(cat "$BW_SESSION_CACHE")
+        cached=$(cat "$BW_SESSION_CACHE" 2>/dev/null || true)
+        cached=$(trim "$cached")
         if [ -n "$cached" ]; then
             export BW_SESSION="$cached"
             local status
             status=$(bw status --session "$BW_SESSION" 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
-            [ "$status" = "unlocked" ] && return 0
+            if [ "$status" = "unlocked" ]; then
+                return 0
+            fi
+        fi
+        # Session in cache is invalid or expired
+        rm -f "$BW_SESSION_CACHE"
+        unset BW_SESSION
+    fi
+
+    # 3. Check Bitwarden authentication status
+    local auth_status
+    auth_status=$(bw status 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
+    if [ "$auth_status" = "unauthenticated" ]; then
+        err "You are not logged in to Bitwarden CLI."
+        info "(If using self-hosted Vaultwarden, run 'bw config server <url>' first)"
+        if [ -t 0 ]; then
+            echo -ne "${CYAN}[bwssh] Would you like to log in now with 'bw login'? [Y/n] ${RESET}" >&2
+            local ans
+            read -r ans
+            case "${ans:-y}" in
+                [yY][eE][sS]|[yY])
+                    if ! bw login; then
+                        err "Bitwarden login failed."
+                        exit 1
+                    fi
+                    ;;
+                *)
+                    info "Please log in first using: ${BOLD}bw login${RESET}"
+                    exit 1
+                    ;;
+            esac
+        else
+            err "Please log in first using: ${BOLD}bw login${RESET}"
+            exit 1
         fi
     fi
 
@@ -118,23 +180,41 @@ bw_start_serve() {
         sleep 0.2
     fi
 
+    # Truncate log file
+    : > "$BW_SERVE_LOG"
+
     # Use --unhandled-rejections=warn so network/DNS errors do not crash bw serve
     NODE_OPTIONS="${NODE_OPTIONS:-} --unhandled-rejections=warn" \
     BW_SESSION="$BW_SESSION" bw --session "$BW_SESSION" serve \
         --hostname "$BW_SERVE_HOST" \
         --port "$BW_SERVE_PORT" \
         >"$BW_SERVE_LOG" 2>&1 &
-    echo $! > "$BW_SERVE_PID_FILE"
+    local srv_pid=$!
+    echo "$srv_pid" > "$BW_SERVE_PID_FILE"
 
     # Wait up to 5s for server to be ready
     local i=0
     while [ $i -lt 25 ]; do
         sleep 0.2
-        bw_serve_running && { ok "bw serve ready."; return 0; }
+        if bw_serve_running; then
+            ok "bw serve ready."
+            return 0
+        fi
+        # If server process died early, stop waiting immediately
+        if ! kill -0 "$srv_pid" 2>/dev/null; then
+            break
+        fi
         i=$((i + 1))
     done
 
-    err "bw serve failed to start or vault locked. Check log: $BW_SERVE_LOG"
+    err "bw serve failed to start or vault locked."
+    if [ -f "$BW_SERVE_LOG" ] && [ -s "$BW_SERVE_LOG" ]; then
+        local log_msg
+        log_msg=$(trim "$(cat "$BW_SERVE_LOG")")
+        [ -n "$log_msg" ] && err "Log: $log_msg"
+    else
+        err "Check log: $BW_SERVE_LOG"
+    fi
     return 1
 }
 
@@ -536,6 +616,7 @@ main() {
             ;;
     esac
 
+    bw_check_dependencies
     bw_ensure_session
 
     # Handle sync before starting serve

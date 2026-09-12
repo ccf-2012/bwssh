@@ -56,6 +56,17 @@ Add this to your `~/.zshrc` or `~/.bashrc`:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+#### 3. Log in to Bitwarden for the first time
+
+```bash
+# Official Bitwarden cloud:
+bw login
+
+# If using self-hosted Vaultwarden, configure server first:
+# bw config server https://vault.example.com
+# bw login
+```
+
 ---
 
 ## Storing SSH Entries in Bitwarden

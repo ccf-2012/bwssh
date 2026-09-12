@@ -45,6 +45,17 @@ mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/ccf-2012/b
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+#### 3. 首次使用登录 Bitwarden
+
+```bash
+# 官方云端：
+bw login
+
+# 若使用自建 Vaultwarden，登录前先配置服务器地址：
+# bw config server https://vault.example.com
+# bw login
+```
+
 ---
 
 ## 在 Bitwarden 中存储 SSH 条目
@@ -253,18 +264,26 @@ BWSSH_OPTS="-L 8080:localhost:8080" bwssh prod-web-01
 
 在受限环境或临时跳板机上，只需安装 `bw` 和 `jq`，**可以不装 fzf**（不交互选择，直接输入名字）。
 
-**安装 `bw`：**
-
 ```bash
-# macOS
+# 1. 安装 bw
+# macOS:
 brew install bitwarden-cli
-
-# Linux (下载独立二进制，无需 Node.js / npm)
-curl -L "https://github.com/bitwarden/clients/releases/latest/download/bw-linux-amd64.zip" -o /tmp/bw.zip
+# Linux (下载独立二进制，无需 Node.js / npm):
+curl -fsSL "https://github.com/bitwarden/clients/releases/latest/download/bw-linux-amd64.zip" -o /tmp/bw.zip
 unzip /tmp/bw.zip -d ~/.local/bin/ && chmod +x ~/.local/bin/bw
+
+# 2. 安装 jq
+# Debian / Ubuntu:
+sudo apt-get install -y jq
+# RHEL / CentOS:
+sudo yum install -y jq
+
+# 3. 登录一次
+bw login
 ```
 
+---
 
+## License
 
-
-
+This project is licensed under the [MIT License](LICENSE).
