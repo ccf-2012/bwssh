@@ -7,11 +7,11 @@
 [**中文文档 (Chinese)**](README.md) | **English**
 
 ---
-with bwssh you can just type bwssh lax9929 to reach and login to your host. all the credential saved in your self-hosted vaultwarden, no ~/.ssh/lax9929.key, no ~/.ssh/config.
+with **bwssh** you can just type `bwssh lax9929` to reach and login to your host. all the credential saved in your self-hosted vaultwarden, no `~/.ssh/lax9929.key`, no `~/.ssh/config`.
 
-if you have too many hosts and forget the host name, just type bwssh and a fzf menu pop up, u can navigate and press enter to connect. everything stay in terminal.
+if you have too many hosts and forget the host name, just type `bwssh` and a `fzf` menu pop up, you can navigate and press enter to connect. everything stay in terminal.
 
-you can also bwssh lax9929 "uptime" to excute some command.
+you can also `bwssh lax9929 "uptime"` to excute some command.
 
 ---
 
